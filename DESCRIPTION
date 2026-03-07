@@ -1,6 +1,6 @@
 Package: contentanalysis
 Title: Scientific Content and Citation Analysis from PDF Documents
-Version: 0.2.1
+Version: 1.0.0
 Authors@R: c(
     person(given = "Massimo",
            family = "Aria",
@@ -32,11 +32,11 @@ BugReports: https://github.com/massimoaria/contentanalysis/issues
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 NeedsCompilation: no
-Packaged: 2025-12-11 09:36:01 UTC; massimoaria
+Packaged: 2026-03-07 11:13:33 UTC; massimoaria
 Author: Massimo Aria [cre, aut, cph] (ORCID:
     <https://orcid.org/0000-0002-8517-9411>),
   Corrado Cuccurullo [aut] (ORCID:
     <https://orcid.org/0000-0002-7401-8575>)
 Maintainer: Massimo Aria <aria@unina.it>
 Repository: CRAN
-Date/Publication: 2025-12-12 07:10:48 UTC
+Date/Publication: 2026-03-07 13:20:02 UTC
