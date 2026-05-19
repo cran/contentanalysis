@@ -294,6 +294,277 @@ convert_superscript_citations <- function(text) {
 }
 
 
+#' Remove first-page footer metadata from PDF word data
+#'
+#' Detects and removes editorial footer content typically found on the first
+#' page of scientific papers (corresponding author info, DOI, received dates,
+#' copyright notices). These footers are identified by characteristic patterns
+#' starting with markers like "*", "Corresponding author", DOI URLs, or
+#' copyright symbols.
+#'
+#' @param page_data Data frame from pdftools::pdf_data() for page 1
+#'
+#' @return Data frame with footer rows removed
+#'
+#' @keywords internal
+#' @noRd
+strip_first_page_footer <- function(page_data) {
+  if (nrow(page_data) == 0) return(page_data)
+
+  # Sort by y to find footer zone
+  max_y <- max(page_data$y)
+  page_height <- max_y + max(page_data$height, na.rm = TRUE)
+
+  # Look for footer markers in the bottom 25% of the page
+  bottom_zone_y <- max_y * 0.75
+  bottom_words <- page_data[page_data$y >= bottom_zone_y, ]
+
+  if (nrow(bottom_words) == 0) return(page_data)
+
+  # Group bottom words by line
+  y_tol <- compute_y_tolerance(page_data$y)
+  bottom_words$line_y <- round(bottom_words$y / y_tol) * y_tol
+  lines_by_y <- split(bottom_words, bottom_words$line_y)
+
+  # Build line texts
+  footer_start_y <- NA
+  for (line_y in sort(as.numeric(names(lines_by_y)))) {
+    line <- lines_by_y[[as.character(line_y)]]
+    line <- line[order(line$x), ]
+    line_text <- paste(line$text, collapse = " ")
+
+    # Detect footer markers
+    is_footer_line <- grepl(
+      paste0(
+        "^\\s*\\*\\s*$|",                                      # lone asterisk
+        "\\bCorresponding\\s+author\\b|",                       # corresponding author
+        "\\bE-mail\\s+address|",                                # email addresses
+        "\\bhttps?://doi\\.org/|",                              # DOI URL
+        "\\bReceived\\s+\\d+\\s+\\w+\\s+\\d{4}|",             # received date
+        "\\bAvailable\\s+online\\b|",                           # available online
+        "\\b\\d{4}-\\d{4}/\\s*\\xa9|",                         # ISSN/copyright
+        "\\b\\d{4}-\\d{4}/\\s*\u00a9|",                    # ISSN/copyright alt
+        "\\bPublished\\s+by\\s+Elsevier|",                     # publisher
+        "\\bPublished\\s+by\\s+Springer|",                     # publisher
+        "\\bCreative\\s+Commons|",                              # CC license
+        "\\bunder\\s+the\\s+CC\\s+BY|",                        # CC BY license
+        "\\bcreativecommons\\.org|",                            # CC URL
+        "\\b\u00a9\\s*\\d{4}\\b"                           # copyright year
+      ),
+      line_text,
+      perl = TRUE,
+      ignore.case = TRUE
+    )
+
+    if (is_footer_line && is.na(footer_start_y)) {
+      footer_start_y <- line_y
+      break
+    }
+  }
+
+  if (is.na(footer_start_y)) return(page_data)
+
+  # Remove all words at or below the footer start
+  # Use a small tolerance to capture the footer marker line itself
+  page_data <- page_data[page_data$y < (footer_start_y - y_tol / 2), ]
+
+  page_data
+}
+
+
+#' Remove first-page header/metadata area from PDF word data
+#'
+#' On scientific paper first pages, the area above the main text body often
+#' contains journal name, article title, authors, affiliations, keywords, and
+#' abstract. When split into columns, this metadata area produces garbled text.
+#' This function detects and removes it by looking for markers like "ABSTRACT",
+#' "ARTICLE INFO", "Introduction", or section "1." that indicate where the
+#' body text begins.
+#'
+#' @param page_data Data frame from pdftools::pdf_data() for page 1
+#'
+#' @return Data frame with header metadata rows removed
+#'
+#' @keywords internal
+#' @noRd
+strip_first_page_header <- function(page_data) {
+  if (nrow(page_data) == 0) return(page_data)
+
+  page_data_sorted <- page_data[order(page_data$y, page_data$x), ]
+
+  # First check if this page has journal metadata markers
+  # Only strip if we detect a real academic paper first page
+  all_text <- paste(page_data_sorted$text, collapse = " ")
+  has_metadata <- grepl(
+    paste0(
+      "\\bARTICLE\\s+INFO\\b|",
+      "\\bABSTRACT\\b.*\\bKeywords?\\b|",
+      "\\bKeywords?\\b.*\\bABSTRACT\\b|",
+      "\\bScienceDirect\\b|",
+      "\\bElsevier\\b|",
+      "\\bSpringer\\b|",
+      "\\bjournal\\s+homepage\\b|",
+      "\\bdoi\\.org\\b|",
+      "\\bReceived\\s+\\d+|",
+      "\\bCorresponding\\s+author\\b"
+    ),
+    all_text,
+    perl = TRUE,
+    ignore.case = TRUE
+  )
+
+  if (!has_metadata) return(page_data)
+
+  # Look for body-start markers
+  body_markers <- c(
+    "^1\\.\\s+Introduction",
+    "^1\\.\\s+INTRODUCTION",
+    "^Introduction$",
+    "^INTRODUCTION$"
+  )
+
+  # Build line texts with y coordinates
+  y_tol <- compute_y_tolerance(page_data$y)
+  page_data_sorted$line_y <- round(page_data_sorted$y / y_tol) * y_tol
+  lines_by_y <- split(page_data_sorted, page_data_sorted$line_y)
+
+  body_start_y <- NA
+
+  for (line_y_str in names(lines_by_y)[order(as.numeric(names(lines_by_y)))]) {
+    line <- lines_by_y[[line_y_str]]
+    line <- line[order(line$x), ]
+    line_text <- paste(line$text, collapse = " ")
+
+    for (marker in body_markers) {
+      if (grepl(marker, line_text, perl = TRUE)) {
+        body_start_y <- as.numeric(line_y_str)
+        break
+      }
+    }
+    if (!is.na(body_start_y)) break
+  }
+
+  if (is.na(body_start_y)) return(page_data)
+
+  # Remove everything above the body start marker
+  page_data <- page_data[page_data$y >= (body_start_y - y_tol / 2), ]
+
+  page_data
+}
+
+
+#' Remove running header lines from PDF page data
+#'
+#' Identifies and removes running headers that appear at the top of multiple
+#' pages. Compares the first text line across all pages; if the same text
+#' appears on 3+ pages, it is removed from all pages.
+#'
+#' @param data_list List of data frames from pdftools::pdf_data()
+#'
+#' @return Modified data_list with running header rows removed
+#'
+#' @keywords internal
+#' @noRd
+strip_page_running_headers <- function(data_list) {
+  if (length(data_list) < 3) return(data_list)
+
+  # Extract first-line text from each page
+  first_line_texts <- character(length(data_list))
+  first_line_max_y <- numeric(length(data_list))
+
+  for (i in seq_along(data_list)) {
+    pg <- data_list[[i]]
+    if (nrow(pg) == 0) next
+
+    min_y <- min(pg$y)
+    y_tol <- compute_y_tolerance(pg$y)
+    # Get words on the first line
+    first_line <- pg[pg$y <= min_y + y_tol, ]
+    first_line <- first_line[order(first_line$x), ]
+    first_line_texts[i] <- paste(first_line$text, collapse = " ")
+    first_line_max_y[i] <- min_y + y_tol
+  }
+
+  # Find pages (>= 3) sharing the same first line text (or very similar)
+  # Use first 40 chars as signature to handle minor variations
+  signatures <- substr(first_line_texts, 1, 40)
+  sig_table <- table(signatures)
+  repeated_sigs <- names(sig_table[sig_table >= 3])
+
+  if (length(repeated_sigs) == 0) return(data_list)
+
+  for (sig in repeated_sigs) {
+    pages_with_header <- which(signatures == sig)
+    for (i in pages_with_header) {
+      pg <- data_list[[i]]
+      if (nrow(pg) == 0) next
+      # Remove the first line
+      data_list[[i]] <- pg[pg$y > first_line_max_y[i], ]
+    }
+  }
+
+  data_list
+}
+
+
+#' Compute a global gutter threshold from multiple pages
+#'
+#' Analyzes all pages to find a stable column separator. Uses the median
+#' gutter position across pages that show a clear 2-column layout, avoiding
+#' pages with mixed layouts (e.g., title pages with sidebar keywords).
+#'
+#' @param data_list List of data frames from pdftools::pdf_data()
+#' @param n_columns Integer. Number of columns to detect.
+#'
+#' @return Numeric vector of thresholds, or NULL if detection fails
+#'
+#' @keywords internal
+#' @noRd
+compute_global_gutter <- function(data_list, n_columns = 2) {
+  if (length(data_list) < 1) return(NULL)
+
+  # Collect gutter estimates from each page
+  page_gutters <- list()
+
+  for (page_num in seq_along(data_list)) {
+    page_data <- data_list[[page_num]]
+    if (nrow(page_data) < 30) next
+
+    x_positions <- page_data$x
+
+    tryCatch({
+      clusters <- kmeans(x_positions, centers = n_columns, nstart = 20)
+      cluster_centers <- sort(clusters$centers[, 1])
+
+      # Compute per-page thresholds
+      thresholds <- numeric(n_columns - 1)
+      for (i in 1:(n_columns - 1)) {
+        thresholds[i] <- find_gutter_x(
+          x_positions,
+          c(cluster_centers[i], cluster_centers[i + 1])
+        )
+      }
+
+      # Quality check: both clusters should have similar sizes (within 3:1 ratio)
+      cluster_sizes <- table(clusters$cluster)
+      size_ratio <- max(cluster_sizes) / max(min(cluster_sizes), 1)
+
+      if (size_ratio <= 3 && validate_columns(page_data, thresholds[1])) {
+        page_gutters[[length(page_gutters) + 1]] <- thresholds
+      }
+    }, error = function(e) NULL)
+  }
+
+  if (length(page_gutters) == 0) return(NULL)
+
+  # Use the median gutter across valid pages
+  gutter_matrix <- do.call(rbind, page_gutters)
+  global_thresholds <- apply(gutter_matrix, 2, stats::median)
+
+  global_thresholds
+}
+
+
 #' Find the gutter x-position between two column centers
 #'
 #' @param x_positions Numeric vector of x coordinates
@@ -448,12 +719,40 @@ pdf2txt_multicolumn_safe <- function(
   tryCatch(
     {
       data_list <- pdftools::pdf_data(file)
+
+      # Remove running headers from page data (before text reconstruction)
+      data_list <- strip_page_running_headers(data_list)
+
       all_text <- c()
+
+      # Pre-compute a global gutter from the most reliable pages
+      # (pages with clear 2-column layout) to avoid per-page misdetection
+      global_thresholds <- NULL
+      if (!is.null(n_columns) && n_columns >= 2) {
+        global_thresholds <- compute_global_gutter(data_list, n_columns)
+      }
+
+      # For auto-detection mode, also pre-compute a global threshold
+      auto_global_threshold <- NULL
+      if (is.null(n_columns) && is.null(column_threshold)) {
+        auto_global <- compute_global_gutter(data_list, 2)
+        if (!is.null(auto_global)) {
+          auto_global_threshold <- auto_global[1]
+        }
+      }
 
       for (page_num in seq_along(data_list)) {
         page_data <- data_list[[page_num]]
         if (nrow(page_data) == 0) {
           next
+        }
+
+        # Strip first-page metadata: header (title/abstract/keywords) and
+        # footer (corresponding author, DOI, received dates, copyright)
+        if (page_num == 1) {
+          page_data <- strip_first_page_header(page_data)
+          page_data <- strip_first_page_footer(page_data)
+          if (nrow(page_data) == 0) next
         }
 
         if (!is.null(n_columns)) {
@@ -471,19 +770,24 @@ pdf2txt_multicolumn_safe <- function(
 
             tryCatch(
               {
-                clusters <- kmeans(
-                  x_positions,
-                  centers = n_columns,
-                  nstart = 20
-                )
-                cluster_centers <- sort(clusters$centers[, 1])
-
-                thresholds <- numeric(n_columns - 1)
-                for (i in 1:(n_columns - 1)) {
-                  thresholds[i] <- find_gutter_x(
+                # Use global thresholds if available, otherwise per-page
+                if (!is.null(global_thresholds)) {
+                  thresholds <- global_thresholds
+                } else {
+                  clusters <- kmeans(
                     x_positions,
-                    c(cluster_centers[i], cluster_centers[i + 1])
+                    centers = n_columns,
+                    nstart = 20
                   )
+                  cluster_centers <- sort(clusters$centers[, 1])
+
+                  thresholds <- numeric(n_columns - 1)
+                  for (i in 1:(n_columns - 1)) {
+                    thresholds[i] <- find_gutter_x(
+                      x_positions,
+                      c(cluster_centers[i], cluster_centers[i + 1])
+                    )
+                  }
                 }
 
                 # Validate column split
@@ -575,25 +879,32 @@ pdf2txt_multicolumn_safe <- function(
           # Automatic column detection
           y_tol <- compute_y_tolerance(page_data$y)
           if (is.null(column_threshold)) {
-            x_positions <- page_data$x
-            if (length(unique(x_positions)) > 20) {
-              tryCatch(
-                {
-                  clusters <- kmeans(x_positions, centers = 2, nstart = 10)
-                  cluster_centers <- sort(clusters$centers[, 1])
-                  column_threshold <- find_gutter_x(x_positions, cluster_centers)
-                },
-                error = function(e) {
-                  column_threshold <- (max(page_data$x) + min(page_data$x)) / 2
-                }
-              )
+            # Use global threshold if available, otherwise per-page
+            if (!is.null(auto_global_threshold)) {
+              page_column_threshold <- auto_global_threshold
             } else {
-              column_threshold <- (max(page_data$x) + min(page_data$x)) / 2
+              x_positions <- page_data$x
+              if (length(unique(x_positions)) > 20) {
+                tryCatch(
+                  {
+                    clusters <- kmeans(x_positions, centers = 2, nstart = 10)
+                    cluster_centers <- sort(clusters$centers[, 1])
+                    page_column_threshold <- find_gutter_x(x_positions, cluster_centers)
+                  },
+                  error = function(e) {
+                    page_column_threshold <- (max(page_data$x) + min(page_data$x)) / 2
+                  }
+                )
+              } else {
+                page_column_threshold <- (max(page_data$x) + min(page_data$x)) / 2
+              }
             }
+          } else {
+            page_column_threshold <- column_threshold
           }
 
           # Validate before treating as two-column
-          is_two_col <- validate_columns(page_data, column_threshold)
+          is_two_col <- validate_columns(page_data, page_column_threshold)
 
           if (!is_two_col) {
             # Single column layout
@@ -604,8 +915,8 @@ pdf2txt_multicolumn_safe <- function(
               y_tolerance = y_tol
             )
           } else {
-            left_column <- page_data[page_data$x < column_threshold, ]
-            right_column <- page_data[page_data$x >= column_threshold, ]
+            left_column <- page_data[page_data$x < page_column_threshold, ]
+            right_column <- page_data[page_data$x >= page_column_threshold, ]
 
             # Two-column layout
             left_column <- left_column[order(left_column$y, left_column$x), ]
