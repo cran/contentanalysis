@@ -1,6 +1,6 @@
-010fa96079bb4a1207290b4ef4480e3e *DESCRIPTION
+1c68f26ae74eb8ad0e8fbd23d605d6c4 *DESCRIPTION
 e44040e8e3afb452df147ecc3ecafabf *NAMESPACE
-c5f69a56aa9c6ed0aadc5ee2b551c621 *NEWS.md
+955f0bad5a6e3079b3c5c29ece217dca *NEWS.md
 a481babd76111d5c19c7f0dbdae6677c *R/citation_analysis.R
 bd9b75870e7b2bed8d6c871c8e35ac6f *R/citation_matching.R
 408ed17c9ba36498990822fdd2cdbb24 *R/create_citation_network.R
@@ -18,11 +18,11 @@ a36640222f78eeb93461da4a5a6c6239 *R/pdf_import.R
 1ab4de5b7ddb33eebffb92f33a3aa554 *R/rhetorical_rules.R
 b56ff2b193ecba52f9ec7f3b10cca008 *R/utils-pipe.R
 f6ff91ab650266880717c160d6fb0fa0 *R/word_distribution.R
-48f9871d67261bf049ce5368d0f3d64f *README.md
+cf1c1b63dcc08c3b8d98339fa3130156 *README.md
 da6b3c8705e4ff08212b6552b15b614b *build/vignette.rds
 a4b2d8bd3cdb7d9fdf97ea085d836e3b *inst/doc/introduction.R
 ff1c66ea1a3fb487ef10c7ca395c2305 *inst/doc/introduction.Rmd
-aca9edcab1c6ffc357085e2c6126ff2e *inst/doc/introduction.html
+e136095647983627f1212af5c7e61668 *inst/doc/introduction.html
 fcb9aa874d40034b2eab2e8365ff840c *inst/www/ca_logo.jpg
 594461d875520d9114d88638282757de *man/analyze_scientific_content.Rd
 1c0e28b1d71197945be74df707ebf50a *man/author_names_match.Rd
@@ -41,7 +41,7 @@ adef31908214cc194573df5ecf64005c *man/extract_pdf_metadata.Rd
 026428eac281428c5a215ab506a8eccb *man/figures/README-refs-per-section.png
 69819f204e914bbba2699620962bea06 *man/figures/README-tfidf-bars.png
 026428eac281428c5a215ab506a8eccb *man/figures/README-tfidf-heatmap.png
-e2dde295e804595ab46d597c4a8d0128 *man/figures/README-unnamed-chunk-10-1.png
+95b415d9ad8b02de7d7570898b3b5920 *man/figures/README-unnamed-chunk-10-1.png
 69819f204e914bbba2699620962bea06 *man/figures/README-unnamed-chunk-14-1.png
 026428eac281428c5a215ab506a8eccb *man/figures/README-unnamed-chunk-14-2.png
 026428eac281428c5a215ab506a8eccb *man/figures/README-unnamed-chunk-14-3.png
